@@ -32,7 +32,7 @@ MVP v1.0. Соответствует ТЗ (`zadanie.docx`).
 | База      | SQLite (встроенный модуль `node:sqlite`) |
 | Кэш       | Redis (счётчики частоты и TTL-баны); in-memory fallback для разработки без Redis |
 | Фронтенд  | React 18 + Vite + TypeScript + Tailwind |
-| Инфра     | Docker Compose (app + redis + nginx) |
+| Инфра     | Docker Compose (app + redis); трафик отдаёт ваш системный nginx |
 
 ## Быстрый старт
 
@@ -65,22 +65,24 @@ npm run dev
 
 ### 2. Production через Docker Compose
 
-Требуется: Docker + Docker Compose.
+Требуется: Docker + Docker Compose. Отдельного nginx-контейнера нет — трафик
+на трекер отдаёт **ваш системный nginx** (см. `TRACKER_PORT` и пример server-блока ниже).
 
 ```bash
-cp .env.example .env       # и заполните ADMIN_PASSWORD, SESSION_SECRET, POSTBACK_TOKEN,
-                           # при необходимости HTTP_PORT / APP_PORT / TRACKER_DOMAIN
+cp .env.example .env       # заполните ADMIN_PASSWORD, SESSION_SECRET, POSTBACK_TOKEN,
+                           # при необходимости TRACKER_PORT / APP_PORT
 docker compose up --build -d
 ```
 
-- Сайт: **http://host:HTTP_PORT** (nginx; по умолчанию `HTTP_PORT=8080`).
+- Контейнер `app` слушает на хосте **http://IP:TRACKER_PORT** (по умолчанию `:3001`).
 - Менеджер: `docker compose ps`, логи: `docker compose logs -f app`.
 
 ### 2.1 Деплой на VPS (рядом с уже работающим трекером на :3000)
 
-Наш контейнер **не занимает порт 3000 хоста**: `app` доступен только внутри сети
-compose (`expose`), а наружу смотрит только nginx на настроенном `HTTP_PORT`.
-Поэтому уже существующий трекер на `:3000` не конфликтует.
+Ваш системный nginx уже занимает порты 80 и 8080, а на :3000 работает другой трекер.
+Контейнер этого проекта не трогает ни один из них: приложению выдан свободный
+порт хоста `TRACKER_PORT` (по умолчанию `3001`), и именно на него ваш nginx
+проксирует домен трекера.
 
 ```bash
 # 1. Клонируйте свежий код
@@ -93,23 +95,39 @@ nano .env
 #   ADMIN_PASSWORD  — пароль админки
 #   SESSION_SECRET  — случайная строка
 #   POSTBACK_TOKEN  — секрет postback (должен совпадать с настройкой CPA-сети)
-#   HTTP_PORT=8080  — если 80-й порт занят другим сервисом, задайте другой
-#   TRACKER_DOMAIN  — домен/поддомен трекера (например hub.my-domain.ru)
+#   TRACKER_PORT=3001 — свободный порт хоста (не 80/8080/3000)
 
-# 3. Поднимите
+# 3. Поднимите контейнеры
 docker compose up --build -d
+
+# 4. Добавьте в ВАШ nginx (тот, что на 80/8080) server-блок трекера
+#    /etc/nginx/sites-available/push-tracker (или в ваш default):
+#
+#    server {
+#        listen 80;
+#        server_name push.my-domain.ru;      # ваш домен/поддомен
+#        location / {
+#            proxy_pass http://127.0.0.1:3001;   # == TRACKER_PORT из .env
+#            proxy_http_version 1.1;
+#            proxy_set_header Host $host;
+#            proxy_set_header X-Real-IP $remote_addr;
+#            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#            proxy_set_header X-Forwarded-Proto $scheme;
+#        }
+#    }
+#
+#    затем: ln -s /etc/nginx/sites-available/push-tracker /etc/nginx/sites-enabled/
+#           nginx -t && systemctl reload nginx
+
+# 5. Проверка
+curl -I http://push.my-domain.ru/health      # ваш nginx -> app :3001
+curl 'http://127.0.0.1:3001/clk?sub1=test'   # напрямую: 302/200 заглушка
 ```
 
-Проверка:
-
-```bash
-curl -I http://ваш-домен/health        # nginx -> app -> {"ok":true,...}
-curl 'http://127.0.0.1:8080/clk?sub1=test'   # 302/200 заглушка
-```
-
-> HTTPS: за nginx с открытым портом 80 можно поставить свой внешний прокси
-> (Caddy/certbot). Быстрый вариант — `HTTP_PORT=80` + шифрование через внешний
-> nginx, который уже обслуживает ваш сервер.
+> HTTPS: выпустите сертификат для домена трекера через certbot в тот же
+> server-блок; `TRUST_PROXY=true` уже стоит, реальный IP посетителя берётся
+> из первого hop'а `X-Forwarded-For`. Если перед вашим nginx есть ещё один
+> прокси (Cloudflare и т.п.) — настройте там `set_real_ip_from`.
 
 ### 3. Одиночный production-процесс (без Docker)
 
@@ -142,7 +160,7 @@ npm start                          # запустит backend:3000, которы
 
 В `.env` для Docker Compose (корень проекта) — настройки приложения
 (`ADMIN_PASSWORD`, `SESSION_SECRET`, `POSTBACK_TOKEN`, `RATE_LIMIT_PER_MIN`)
-и публикации (`HTTP_PORT`, `APP_PORT`, `TRACKER_DOMAIN`), см. [`.env.example`](.env.example).
+и публикации (`TRACKER_PORT`, `APP_PORT`), см. [`.env.example`](.env.example).
 
 ## API
 
@@ -211,9 +229,8 @@ push-tracker/
 │       ├── components/       # Layout, ui
 │       └── api/client.ts
 ├── Dockerfile
-├── docker-compose.yml        # app + redis + nginx (порты из .env)
-├── nginx/
-│   └── default.conf.template # шаблон конфига nginx (порт/домен из env)
+├── docker-compose.yml        # app + redis; хост-порт из .env (TRACKER_PORT)
+├── .env.example              # шаблон переменных для docker compose
 └── README.md
 ```
 

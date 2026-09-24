@@ -19,8 +19,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      # Внутренний порт приложения. НЕ публикуется на хост — доступен только внутри сети compose,
-      # поэтому уже работающий на сервере трекер на :3000 не конфликтует.
+      # Внутренний порт приложения (по умолчанию 3000). Бесплатный хост-порт выбирается в TRACKER_PORT.
       PORT: ${APP_PORT:-3000}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?укажите ADMIN_PASSWORD в .env}
       SESSION_SECRET: ${SESSION_SECRET:?укажите SESSION_SECRET в .env}
@@ -30,33 +29,19 @@ services:
       DATABASE_PATH: /app/backend/data/tracker.db
       LOG_FILE_ENABLED: "true"
       LOG_DIR: /app/backend/logs
+      # Перед приложением стоит ВАШ nginx (80/8080): берём первый hop из X-Forwarded-For.
       TRUST_PROXY: "true"
+    ports:
+      - "${TRACKER_PORT:-3001}:${APP_PORT:-3000}"
     volumes:
       - tracker-data:/app/backend/data
       - tracker-logs:/app/backend/logs
-    expose:
-      - "${APP_PORT:-3000}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider \"http://127.0.0.1:$$PORT/health\" || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 10s
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "${HTTP_PORT:-8080}:80"
-    environment:
-      TRACKER_DOMAIN: ${TRACKER_DOMAIN:-_}
-      APP_PORT: ${APP_PORT:-3000}
-    volumes:
-      # Шаблон конфига: nginx-образ сам подставит TRACKER_DOMAIN и APP_PORT (entrypoint envsubst).
-      - ./nginx:/etc/nginx/templates:ro
 
 volumes:
   redis-data:
