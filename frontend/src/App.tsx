@@ -35,7 +35,10 @@ function UnauthorizedRedirect() {
 
   useEffect(() => {
     const handler = () => {
-      window.location.href = '/login';
+      // Не перезагружать, если мы уже на странице входа — иначе вечный цикл.
+      if (location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     };
     window.addEventListener('pt:unauthorized', handler);
     return () => window.removeEventListener('pt:unauthorized', handler);

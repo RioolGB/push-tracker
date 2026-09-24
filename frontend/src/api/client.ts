@@ -76,14 +76,17 @@ export interface StatsResponse {
   rows?: GroupRow[];
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, opts: { silent401?: boolean } = {}): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',
     headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
     ...options,
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !opts.silent401) {
+    // Событие только когда сессия протухла посреди работы. Проверки логина
+    // (me/login) обрабатываются самими страницами — иначе на /login возникает
+    // бесконечный цикл перезагрузки.
     window.dispatchEvent(new CustomEvent('pt:unauthorized'));
     throw new ApiError('Сессия истекла', 401);
   }
@@ -110,9 +113,9 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  login: (password: string) => request<{ ok: boolean }>('/admin/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  login: (password: string) => request<{ ok: boolean }>('/admin/login', { method: 'POST', body: JSON.stringify({ password }) }, { silent401: true }),
   logout: () => request<{ ok: boolean }>('/admin/logout', { method: 'POST' }),
-  me: () => request<{ ok: boolean; authenticated: boolean }>('/admin/me'),
+  me: () => request<{ ok: boolean; authenticated: boolean }>('/admin/me', {}, { silent401: true }),
 
   stats: (params: URLSearchParams) => request<Summary | StatsResponse>(`/admin/stats?${params.toString()}`),
 
