@@ -1,0 +1,28 @@
+# Тяжёлое/служебное — не копировать в build-контекст
+node_modules
+**/node_modules
+**/dist
+*.map
+build
+
+# Данные, логи, env
+.env
+backend/data
+backend/logs
+**/logs
+**/*.log
+
+# Документация и инфраструктура (в образ не нужны)
+.git
+.gitignore
+README.md
+Dockerfile
+docker-compose.yml
+nginx
+
+# IDE/OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+zadanie.docx

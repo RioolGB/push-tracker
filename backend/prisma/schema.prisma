@@ -1,0 +1,98 @@
+// Справочная схема Prisma для PushTracker.
+// По умолчанию проект работает на better-sqlite3 (DDL в src/db/schema.ts).
+// Prisma использовать НЕ обязательно — схема приведена для соответствия структуре ТЗ.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_PATH")
+}
+
+model Offer {
+  id          Int      @id @default(autoincrement())
+  name        String
+  urlTemplate String   @map("url_template")
+  payout      Float    @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  clicks      Click[]
+  conversions Conversion[]
+
+  @@map("offers")
+}
+
+model Click {
+  id         Int     @id @default(autoincrement())
+  offer      Offer   @relation(fields: [offerId], references: [id])
+  offerId    Int     @map("offer_id")
+  ip         String
+  userAgent  String? @map("user_agent")
+  referer    String?
+  country    String?
+  sub1       String?
+  sub2       String?
+  sub3       String?
+  redirected Boolean @default(true)
+  createdAt  String  @default("") @map("created_at")
+  conversions Conversion[]
+
+  @@index([offerId])
+  @@index([createdAt])
+  @@map("clicks")
+}
+
+model Conversion {
+  id         Int     @id @default(autoincrement())
+  click      Click   @relation(fields: [clickId], references: [id])
+  clickId    Int     @map("click_id")
+  offer      Offer   @relation(fields: [offerId], references: [id])
+  offerId    Int     @map("offer_id")
+  payout     Float   @default(0)
+  status     String  @default("pending")
+  externalId String? @map("external_id")
+  createdAt  String  @default("") @map("created_at")
+
+  @@index([offerId])
+  @@index([status])
+  @@map("conversions")
+}
+
+model Blacklist {
+  id        Int     @id @default(autoincrement())
+  type      String
+  value     String
+  reason    String?
+  expiresAt String? @map("expires_at")
+  createdAt String  @default("") @map("created_at")
+
+  @@map("blacklist")
+}
+
+model Whitelist {
+  id        Int    @id @default(autoincrement())
+  type      String
+  value     String
+  createdAt String @default("") @map("created_at")
+
+  @@map("whitelist")
+}
+
+model Admin {
+  id           Int    @id @default(autoincrement())
+  passwordHash String @map("password_hash")
+  createdAt    String @default("") @map("created_at")
+
+  @@map("admins")
+}
+
+model Spend {
+  id        Int     @id @default(autoincrement())
+  offerId   Int?    @map("offer_id")
+  sub1      String?
+  amount    Float   @default(0)
+  createdAt String  @default("") @map("created_at")
+
+  @@unique([offerId, sub1])
+  @@map("spends")
+}

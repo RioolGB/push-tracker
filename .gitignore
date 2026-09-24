@@ -1,0 +1,24 @@
+# Env
+.env
+!.env.example
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/
+
+# Данные и логи приложения
+backend/data/
+backend/logs/
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
